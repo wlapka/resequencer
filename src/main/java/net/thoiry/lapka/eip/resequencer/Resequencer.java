@@ -10,6 +10,7 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -31,23 +32,32 @@ public class Resequencer implements Runnable {
 	private final Set<Message> pendingMessages = new TreeSet<>(ASCMSGCOMPARATOR);
 	private final BlockingQueue<Message> inQueue;
 	private final BlockingQueue<Message> sequenceQueue;
+	private final CountDownLatch countDownLatch;
 	private int currSequenceNumber = 1;
 	private boolean stop = false;
 
-	public Resequencer(BlockingQueue<Message> inQueue, BlockingQueue<Message> sequenceQueue) {
+	public Resequencer(BlockingQueue<Message> inQueue, BlockingQueue<Message> sequenceQueue,
+			CountDownLatch countDownLatch) {
 		this.inQueue = inQueue;
 		this.sequenceQueue = sequenceQueue;
+		this.countDownLatch = countDownLatch;
 	}
 
 	@Override
 	public void run() {
-		while (!this.stop) {
-			Message message = this.inQueue.poll();
-			if (message != null) {
-				LOGGER.info("Received message: {}.", message);
-				this.pendingMessages.add(message);
-				if (message.getSequenceNumber() == currSequenceNumber)
-					this.sendSequencedMessages();
+		try {
+			while (!this.stop) {
+				Message message = this.inQueue.poll();
+				if (message != null) {
+					LOGGER.info("Received message: {}.", message);
+					this.pendingMessages.add(message);
+					if (message.getSequenceNumber() == currSequenceNumber)
+						this.sendSequencedMessages();
+				}
+			}
+		} finally {
+			if (this.countDownLatch != null) {
+				this.countDownLatch.countDown();
 			}
 		}
 	}

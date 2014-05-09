@@ -7,6 +7,7 @@ package net.thoiry.lapka.eip.resequencer;
 
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
@@ -24,23 +25,31 @@ public class DelayProcessor implements Runnable {
 	private static final int MAXDELAY = 2;
 	private final BlockingQueue<Message> inQueue;
 	private final BlockingQueue<Message> outQueue;
+	private final CountDownLatch countDownLatch;
 	private final DelayQueue<DelayedMessage> delayedQueue = new DelayQueue<>();
 	private boolean stop = false;
 
-	public DelayProcessor(BlockingQueue<Message> inQueue, BlockingQueue<Message> outQueue) {
+	public DelayProcessor(BlockingQueue<Message> inQueue, BlockingQueue<Message> outQueue, CountDownLatch countDownLatch) {
 		this.inQueue = inQueue;
 		this.outQueue = outQueue;
+		this.countDownLatch = countDownLatch;
 	}
 
 	@Override
 	public void run() {
-		while (!stop) {
-			Message message = inQueue.poll();
-			if (message != null) {
-				LOGGER.info("Received message: " + message);
-				this.delayMessage(message);
+		try {
+			while (!stop) {
+				Message message = inQueue.poll();
+				if (message != null) {
+					LOGGER.info("Received message: " + message);
+					this.delayMessage(message);
+				}
+				this.addDelayedMessagesToOutQueue();
 			}
-			this.addDelayedMessagesToOutQueue();
+		} finally {
+			if (this.countDownLatch != null) {
+				this.countDownLatch.countDown();
+			}
 		}
 	}
 
